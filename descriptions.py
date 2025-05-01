@@ -20,7 +20,14 @@ try:
 except LookupError:
     nltk.download('punkt')
 
-# Check for setuptools
+# Check for lxml
+try:
+    import lxml
+except ImportError:
+    st.error("The 'lxml' package is missing. Please ensure it is included in requirements.txt.")
+    st.stop()
+
+# Check for setuptools (previous fix)
 try:
     import pkg_resources
 except ImportError:
