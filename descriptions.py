@@ -12,6 +12,20 @@ from sumy.utils import get_stop_words
 from sumy.summarizers.lsa import LsaSummarizer
 from rake_nltk import Rake
 from urllib.parse import urlparse
+import nltk
+
+# Ensure NLTK punkt is downloaded
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
+
+# Check for setuptools
+try:
+    import pkg_resources
+except ImportError:
+    st.error("The 'setuptools' package is missing. Please ensure it is included in requirements.txt.")
+    st.stop()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
