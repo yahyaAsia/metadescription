@@ -16,6 +16,10 @@ import nltk
 import time
 import traceback
 
+# Set up logging with detailed output
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 # Ensure NLTK resources are downloaded
 try:
     nltk.data.find('tokenizers/punkt')
@@ -29,10 +33,6 @@ try:
 except LookupError:
     nltk.download('stopwords')
     logger.info("NLTK stopwords downloaded")
-
-# Set up logging with detailed output
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 # Streamlit app title
 st.title("Bulk Meta Description Generator")
@@ -59,7 +59,7 @@ def fetch_page_content(url, max_retries=2):
             response = requests.get(url, timeout=15, headers=headers)
             response.raise_for_status()
             logger.debug(f"Successfully fetched {url}: {response.status_code}")
-            return response.text
+            return response.text, None
         except requests.exceptions.RequestException as e:
             logger.error(f"Attempt {attempt + 1} failed for {url}: {e}")
             if attempt < max_retries:
