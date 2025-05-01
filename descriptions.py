@@ -11,6 +11,8 @@ from sumy.summarizers.lsa import LsaSummarizer
 from sumy.parsers.plaintext import PlaintextParser
 from rake_nltk import Rake
 from urllib.parse import urlparse
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 import nltk
 import time
 import traceback
@@ -54,27 +56,29 @@ def is_valid_url(url):
     return bool(url_pattern.match(url.strip()))
 
 def fetch_page_content(url, max_retries=2):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Connection': 'keep-alive'
-    }
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/117.0.0.0')
+    driver = None
     for attempt in range(max_retries + 1):
         try:
-            response = requests.get(url, timeout=15, headers=headers)
-            response.raise_for_status()
-            logger.debug(f"Successfully fetched {url}: {response.status_code}")
-            return response.text, None
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Attempt {attempt + 1} failed for {url}: {e}")
+            driver = webdriver.Chrome(options=chrome_options)
+            driver.get(url)
+            time.sleep(3)
+            html_content = driver.page_source
+            driver.quit()
+            logger.debug(f"Successfully fetched {url} with Selenium")
+            return html_content, None
+        except Exception as e:
+            logger.error(f"Selenium attempt {attempt + 1} failed for {url}: {e}")
+            if driver:
+                driver.quit()
             if attempt < max_retries:
                 time.sleep(3)
             else:
                 return None, str(e)
-        except Exception as e:
-            logger.error(f"Unexpected fetch error for {url}: {e}")
-            return None, str(e)
 
 def generate_meta_descriptions(urls):
     results = []
