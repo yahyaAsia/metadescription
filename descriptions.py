@@ -13,6 +13,7 @@ from sumy.parsers.plaintext import PlaintextParser
 from rake_nltk import Rake
 from urllib.parse import urlparse
 import nltk
+import time
 
 # Ensure NLTK resources are downloaded
 try:
@@ -42,6 +43,25 @@ uploaded_file = st.file_uploader("Upload urls.txt", type=["txt"])
 if 'results' not in st.session_state:
     st.session_state.results = []
 
+def fetch_page_content(url, max_retries=1):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
+    }
+    for attempt in range(max_retries + 1):
+        try:
+            response = requests.get(url, timeout=10, headers=headers)
+            response.raise_for_status()
+            return response.text
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Attempt {attempt + 1} failed for {url}: {e}")
+            if attempt < max_retries:
+                time.sleep(2)  # Wait before retrying
+            else:
+                return None
+        except Exception as e:
+            logger.error(f"Unexpected error fetching {url}: {e}")
+            return None
+
 def generate_meta_descriptions(urls):
     results = []
     rake = Rake()
@@ -51,11 +71,17 @@ def generate_meta_descriptions(urls):
     for i, url in enumerate(urls):
         try:
             logger.info(f"Processing URL: {url}")
-            # Fetch and parse the page with BeautifulSoup
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
+            # Fetch page content
+            html_content = fetch_page_content(url)
+            if not html_content:
+                raise ValueError("Failed to fetch page content")
+
+            # Parse with BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
             page_text = ' '.join([p.get_text() for p in soup.find_all('p')]).strip()
+
+            if not page_text:
+                raise ValueError("No paragraph content found on page")
 
             # Use PlaintextParser for summarization
             parser = PlaintextParser.from_string(page_text, Tokenizer("english"))
@@ -93,21 +119,30 @@ def generate_meta_descriptions(urls):
             logger.error(f"Failed to fetch {url}: {e}")
             results.append({
                 'url': url,
-                'description': 'Error: Could not fetch content.',
+                'description': f"Error: Failed to fetch content - {str(e)}",
+                'char_count': 0,
+                'keywords': ''
+            })
+        except ValueError as e:
+            logger.error(f"Content error for {url}: {e}")
+            results.append({
+                'url': url,
+                'description': f"Error: {str(e)}",
                 'char_count': 0,
                 'keywords': ''
             })
         except Exception as e:
-            logger.error(f"Error processing {url}: {e}")
+            logger.error(f"Unexpected error processing {url}: {e}")
             results.append({
                 'url': url,
-                'description': 'Error: Processing failed.',
+                'description': f"Error: Processing failed - {str(e)}",
                 'char_count': 0,
                 'keywords': ''
             })
 
         # Update progress bar
         progress_bar.progress((i + 1) / total_urls)
+        time.sleep(1)  # Avoid rate-limiting
 
     return results
 
