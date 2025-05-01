@@ -6,3 +6,4 @@ beautifulsoup4==4.12.3
 pandas==2.2.3
 nltk==3.9.1
 setuptools==75.1.0
+selenium==4.25.0
