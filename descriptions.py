@@ -27,7 +27,7 @@ except ImportError:
     st.error("The 'lxml' package is missing. Please ensure it is included in requirements.txt.")
     st.stop()
 
-# Check for setuptools (previous fix)
+# Check for setuptools
 try:
     import pkg_resources
 except ImportError:
