@@ -14,19 +14,24 @@ from rake_nltk import Rake
 from urllib.parse import urlparse
 import nltk
 import time
+import traceback
 
 # Ensure NLTK resources are downloaded
 try:
     nltk.data.find('tokenizers/punkt')
+    logger.info("NLTK punkt found")
 except LookupError:
     nltk.download('punkt')
+    logger.info("NLTK punkt downloaded")
 try:
     nltk.data.find('corpora/stopwords')
+    logger.info("NLTK stopwords found")
 except LookupError:
     nltk.download('stopwords')
+    logger.info("NLTK stopwords downloaded")
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Set up logging with detailed output
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Streamlit app title
@@ -43,28 +48,30 @@ uploaded_file = st.file_uploader("Upload urls.txt", type=["txt"])
 if 'results' not in st.session_state:
     st.session_state.results = []
 
-def fetch_page_content(url, max_retries=1):
+def fetch_page_content(url, max_retries=2):
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
     }
     for attempt in range(max_retries + 1):
         try:
-            response = requests.get(url, timeout=10, headers=headers)
+            response = requests.get(url, timeout=15, headers=headers)
             response.raise_for_status()
+            logger.debug(f"Successfully fetched {url}: {response.status_code}")
             return response.text
         except requests.exceptions.RequestException as e:
             logger.error(f"Attempt {attempt + 1} failed for {url}: {e}")
             if attempt < max_retries:
-                time.sleep(2)  # Wait before retrying
+                time.sleep(3)  # Wait before retrying
             else:
-                return None
+                return None, str(e)
         except Exception as e:
-            logger.error(f"Unexpected error fetching {url}: {e}")
-            return None
+            logger.error(f"Unexpected fetch error for {url}: {e}")
+            return None, str(e)
 
 def generate_meta_descriptions(urls):
     results = []
-    rake = Rake()
     progress_bar = st.progress(0)
     total_urls = len(urls)
 
@@ -72,26 +79,34 @@ def generate_meta_descriptions(urls):
         try:
             logger.info(f"Processing URL: {url}")
             # Fetch page content
-            html_content = fetch_page_content(url)
+            html_content, fetch_error = fetch_page_content(url)
             if not html_content:
-                raise ValueError("Failed to fetch page content")
+                raise ValueError(f"Failed to fetch page content: {fetch_error}")
 
             # Parse with BeautifulSoup
+            logger.debug(f"Parsing HTML for {url}")
             soup = BeautifulSoup(html_content, 'html.parser')
-            page_text = ' '.join([p.get_text() for p in soup.find_all('p')]).strip()
-
+            # Try multiple tags for text extraction
+            page_text = ' '.join([elem.get_text().strip() for elem in soup.find_all(['p', 'div', 'article']) if elem.get_text().strip()])
             if not page_text:
-                raise ValueError("No paragraph content found on page")
+                raise ValueError("No text content found in p, div, or article tags")
+
+            logger.debug(f"Extracted {len(page_text)} characters of text for {url}")
 
             # Use PlaintextParser for summarization
+            logger.debug(f"Creating PlaintextParser for {url}")
             parser = PlaintextParser.from_string(page_text, Tokenizer("english"))
             
             # Extract top keywords
+            logger.debug(f"Extracting keywords for {url}")
+            rake = Rake()
             rake.extract_keywords_from_text(page_text)
             keywords = rake.get_ranked_phrases()[:3]
             keyword_str = ', '.join(keywords[:2]) if keywords else ''
+            logger.debug(f"Keywords for {url}: {keyword_str}")
 
             # Summarize content
+            logger.debug(f"Summarizing content for {url}")
             stemmer = Stemmer("english")
             summarizer = LsaSummarizer(stemmer)
             summarizer.stop_words = get_stop_words("english")
@@ -116,7 +131,7 @@ def generate_meta_descriptions(urls):
             logger.info(f"Generated description for {url}: {description[:50]}...")
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to fetch {url}: {e}")
+            logger.error(f"Fetch error for {url}: {e}\n{traceback.format_exc()}")
             results.append({
                 'url': url,
                 'description': f"Error: Failed to fetch content - {str(e)}",
@@ -124,7 +139,7 @@ def generate_meta_descriptions(urls):
                 'keywords': ''
             })
         except ValueError as e:
-            logger.error(f"Content error for {url}: {e}")
+            logger.error(f"Content error for {url}: {e}\n{traceback.format_exc()}")
             results.append({
                 'url': url,
                 'description': f"Error: {str(e)}",
@@ -132,7 +147,7 @@ def generate_meta_descriptions(urls):
                 'keywords': ''
             })
         except Exception as e:
-            logger.error(f"Unexpected error processing {url}: {e}")
+            logger.error(f"Unexpected error processing {url}: {e}\n{traceback.format_exc()}")
             results.append({
                 'url': url,
                 'description': f"Error: Processing failed - {str(e)}",
@@ -142,7 +157,7 @@ def generate_meta_descriptions(urls):
 
         # Update progress bar
         progress_bar.progress((i + 1) / total_urls)
-        time.sleep(1)  # Avoid rate-limiting
+        time.sleep(2)  # Avoid rate-limiting
 
     return results
 
@@ -179,6 +194,7 @@ if uploaded_file is not None:
                 )
     except Exception as e:
         st.error(f"Error reading file: {e}")
+        logger.error(f"File reading error: {e}\n{traceback.format_exc()}")
 else:
     st.info("Please upload a urls.txt file to begin.")
 
@@ -189,4 +205,8 @@ st.markdown("""
 2. Upload the file using the uploader above.
 3. Click "Generate Meta Descriptions" to process the URLs.
 4. Review the results in the table and download the CSV file.
+
+### Debugging Tips
+- Check the logs in Streamlit Cloud ("Manage app") for detailed error messages.
+- Ensure URLs are accessible and not blocked by the target website.
 """)
