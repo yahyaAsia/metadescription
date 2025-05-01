@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 import nltk
 import time
 import traceback
+import re
 
 # Set up logging with detailed output
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -47,6 +48,11 @@ uploaded_file = st.file_uploader("Upload urls.txt", type=["txt"])
 if 'results' not in st.session_state:
     st.session_state.results = []
 
+def is_valid_url(url):
+    """Validate if the string is a URL."""
+    url_pattern = re.compile(r'^https?://[^\s/$.?#].[^\s]*$')
+    return bool(url_pattern.match(url.strip()))
+
 def fetch_page_content(url, max_retries=2):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
@@ -78,6 +84,10 @@ def generate_meta_descriptions(urls):
     for i, url in enumerate(urls):
         try:
             logger.info(f"Processing URL: {url}")
+            # Validate URL
+            if not is_valid_url(url):
+                raise ValueError("Invalid URL format")
+
             # Fetch page content
             html_content, fetch_error = fetch_page_content(url)
             if not html_content:
@@ -165,8 +175,30 @@ if uploaded_file is not None:
     try:
         # Read the uploaded file
         stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
-        urls = [line.strip() for line in stringio if line.strip()]
-        st.success(f"Imported {len(urls)} URLs from {uploaded_file.name}")
+        file_content = stringio.getvalue()
+        logger.debug(f"Uploaded file content:\n{file_content[:500]}...")
+
+        # Validate file content
+        lines = [line.strip() for line in file_content.splitlines() if line.strip()]
+        if not lines:
+            raise ValueError("Uploaded file is empty")
+        
+        # Check if file contains requirements.txt-like content
+        if any(line.startswith(('streamlit==', 'sumy==', 'rake-nltk==')) for line in lines):
+            raise ValueError("Uploaded file contains requirements.txt content instead of URLs")
+
+        # Validate URLs
+        urls = []
+        for line in lines:
+            if is_valid_url(line):
+                urls.append(line)
+            else:
+                logger.warning(f"Skipping invalid URL: {line}")
+
+        if not urls:
+            raise ValueError("No valid URLs found in the uploaded file")
+
+        st.success(f"Imported {len(urls)} valid URLs from {uploaded_file.name}")
 
         # Button to start processing
         if st.button("Generate Meta Descriptions"):
@@ -191,9 +223,12 @@ if uploaded_file is not None:
                     file_name="meta_descriptions.csv",
                     mime="text/csv"
                 )
-    except Exception as e:
+    except ValueError as e:
         st.error(f"Error reading file: {e}")
         logger.error(f"File reading error: {e}\n{traceback.format_exc()}")
+    except Exception as e:
+        st.error(f"Unexpected error reading file: {e}")
+        logger.error(f"Unexpected file reading error: {e}\n{traceback.format_exc()}")
 else:
     st.info("Please upload a urls.txt file to begin.")
 
@@ -201,12 +236,14 @@ else:
 st.markdown("""
 ### How to Use
 1. Create a `urls.txt` file with one URL per line (e.g., `https://example.com/page1`).
-2. Upload the file using the uploader above.
-3. Click "Generate Meta Descriptions" to process the URLs.
-4. Review the results in the table and download the CSV file.
+2. Ensure the file contains only valid URLs, not requirements.txt content.
+3. Upload the file using the uploader above.
+4. Click "Generate Meta Descriptions" to process the URLs.
+5. Review the results in the table and download the CSV file.
 
 ### Debugging Tips
 - Check the logs in Streamlit Cloud ("Manage app") for detailed error messages.
-- Ensure URLs are accessible and not blocked by the target website.
+- Ensure the uploaded `urls.txt` file contains valid URLs, not requirements.txt content.
+- Verify the file path in Streamlit Cloud is set to `descriptions.py`.
 - Contact support if errors persist, providing the CSV output and logs.
 """)
