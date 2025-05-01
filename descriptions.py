@@ -1,5 +1,4 @@
 import streamlit as st
-import csv
 import logging
 import requests
 import pandas as pd
@@ -25,14 +24,14 @@ try:
     nltk.data.find('tokenizers/punkt')
     logger.info("NLTK punkt found")
 except LookupError:
+    logger.info("Downloading NLTK punkt")
     nltk.download('punkt')
-    logger.info("NLTK punkt downloaded")
 try:
     nltk.data.find('corpora/stopwords')
     logger.info("NLTK stopwords found")
 except LookupError:
+    logger.info("Downloading NLTK stopwords")
     nltk.download('stopwords')
-    logger.info("NLTK stopwords downloaded")
 
 # Streamlit app title
 st.title("Bulk Meta Description Generator")
@@ -52,7 +51,8 @@ def fetch_page_content(url, max_retries=2):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5'
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Connection': 'keep-alive'
     }
     for attempt in range(max_retries + 1):
         try:
@@ -63,7 +63,7 @@ def fetch_page_content(url, max_retries=2):
         except requests.exceptions.RequestException as e:
             logger.error(f"Attempt {attempt + 1} failed for {url}: {e}")
             if attempt < max_retries:
-                time.sleep(3)  # Wait before retrying
+                time.sleep(3)
             else:
                 return None, str(e)
         except Exception as e:
@@ -86,17 +86,16 @@ def generate_meta_descriptions(urls):
             # Parse with BeautifulSoup
             logger.debug(f"Parsing HTML for {url}")
             soup = BeautifulSoup(html_content, 'html.parser')
-            # Try multiple tags for text extraction
             page_text = ' '.join([elem.get_text().strip() for elem in soup.find_all(['p', 'div', 'article']) if elem.get_text().strip()])
-            if not page_text:
-                raise ValueError("No text content found in p, div, or article tags")
+            if not page_text or len(page_text) < 100:
+                raise ValueError(f"Insufficient text content found (length: {len(page_text)})")
 
             logger.debug(f"Extracted {len(page_text)} characters of text for {url}")
 
             # Use PlaintextParser for summarization
             logger.debug(f"Creating PlaintextParser for {url}")
             parser = PlaintextParser.from_string(page_text, Tokenizer("english"))
-            
+
             # Extract top keywords
             logger.debug(f"Extracting keywords for {url}")
             rake = Rake()
@@ -209,4 +208,5 @@ st.markdown("""
 ### Debugging Tips
 - Check the logs in Streamlit Cloud ("Manage app") for detailed error messages.
 - Ensure URLs are accessible and not blocked by the target website.
+- Contact support if errors persist, providing the CSV output and logs.
 """)
