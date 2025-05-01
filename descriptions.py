@@ -5,11 +5,11 @@ import requests
 import pandas as pd
 from io import StringIO, BytesIO
 from bs4 import BeautifulSoup
-from sumy.parsers.html import HtmlParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.nlp.stemmers import Stemmer
 from sumy.utils import get_stop_words
 from sumy.summarizers.lsa import LsaSummarizer
+from sumy.parsers.plaintext import PlaintextParser
 from rake_nltk import Rake
 from urllib.parse import urlparse
 import nltk
@@ -19,20 +19,6 @@ try:
     nltk.data.find('tokenizers/punkt')
 except LookupError:
     nltk.download('punkt')
-
-# Check for lxml
-try:
-    import lxml
-except ImportError:
-    st.error("The 'lxml' package is missing. Please ensure it is included in requirements.txt.")
-    st.stop()
-
-# Check for setuptools
-try:
-    import pkg_resources
-except ImportError:
-    st.error("The 'setuptools' package is missing. Please ensure it is included in requirements.txt.")
-    st.stop()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -61,15 +47,15 @@ def generate_meta_descriptions(urls):
     for i, url in enumerate(urls):
         try:
             logger.info(f"Processing URL: {url}")
-            # Fetch and parse the page
-            parser = HtmlParser.from_url(url, Tokenizer("english"))
-            
-            # Extract text for keyword analysis
+            # Fetch and parse the page with BeautifulSoup
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
-            page_text = ' '.join([p.get_text() for p in soup.find_all('p')])
+            page_text = ' '.join([p.get_text() for p in soup.find_all('p')]).strip()
 
+            # Use PlaintextParser for summarization
+            parser = PlaintextParser.from_string(page_text, Tokenizer("english"))
+            
             # Extract top keywords
             rake.extract_keywords_from_text(page_text)
             keywords = rake.get_ranked_phrases()[:3]
