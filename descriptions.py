@@ -14,11 +14,15 @@ from rake_nltk import Rake
 from urllib.parse import urlparse
 import nltk
 
-# Ensure NLTK punkt is downloaded
+# Ensure NLTK resources are downloaded
 try:
     nltk.data.find('tokenizers/punkt')
 except LookupError:
     nltk.download('punkt')
+try:
+    nltk.data.find('corpora/stopwords')
+except LookupError:
+    nltk.download('stopwords')
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
